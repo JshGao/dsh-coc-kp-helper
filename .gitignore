@@ -17,3 +17,5 @@ dsh-coc-kp-helper测试/
 
 # macOS
 .DS_Store
+.npm-cache/
+.venv/

@@ -15,18 +15,40 @@
 
 ## 安装
 
+这个仓库同时是一个 **DSH 插件包**（profile bundle）：它只做一件事——把包内
+`presets/` 注册成 agent preset 的一个根，于是名册里出现「COC 守秘人备团模式」。
+
+### 方式一：作为插件安装
+
 ```bash
-git clone git@github.com:JshGao/dsh-coc-kp-helper.git
-cd dsh-coc-kp-helper
-DST="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp"
-mkdir -p "$DST"
-cp -R coc-kp-preset/agent.cordis.yml coc-kp-preset/preset.yml coc-kp-preset/skills "$DST"/
+# 从 git 安装到 web profile（会写进该 profile 的 node_modules）
+dsh plugin --profile web add "github:JshGao/dsh-coc-kp-helper"
+
+# 或从 npm 安装（若已发布到 npm）
+dsh plugin --profile web add @jshgao/dsh-coc-kp-helper
 ```
 
-`coc-kp-preset/fixtures/` 与 `vault-test/` 是开发资产，**不要**装进预设目录。
+装完**重启 `dsh web`**：bundle 的 patch 层只在启动时应用。
 
-安装后新开一个会话，预设选「**COC 守秘人备团模式**」。
-如果下拉里没看到它，重启一次 `dsh web`（预设名册在宿主启动时扫描）。
+> 若该 profile 的 `package.json` 里 `dsh.profile.bundles` 没有自动带上本包，
+> 手动加一行 `"@jshgao/dsh-coc-kp-helper"` 再重启即可。
+
+### 方式二：手动复制到用户预设根（不依赖 patch 层）
+
+```bash
+DST="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp"
+mkdir -p "$DST"
+cp -R presets/coc-kp/agent.cordis.yml presets/coc-kp/preset.yml presets/coc-kp/skills "$DST"/
+```
+
+这条路不需要重启宿主之外的任何东西，重启一次 `dsh web` 让名册重新扫描即可。
+两种方式的效果完全相同，装哪个都行；同时装的话**插件根优先**（同名 preset 以靠前的根为准）。
+
+### 装完确认
+
+重启后，在 GUI 的预设下拉里应出现「COC 守秘人备团模式」。
+没有的话检查两件事：`dsh web` 是否真的重启过；该 profile 的 `package.json` 里
+`dsh.profile.bundles` 是否包含本包。
 
 ## 使用
 
@@ -38,7 +60,7 @@ cp -R coc-kp-preset/agent.cordis.yml coc-kp-preset/preset.yml coc-kp-preset/skil
    > 用 `<模组文件名>` 做备团资料
 
 agent 会依次做：可写性自检 → 抽取文本 → 写大纲与专名表 → 写场景笔记 → 写 NPC 笔记 →
-把对白嵌进场景 → 写素材提示词 → 跑 lint 校对 → 写总览与 manifest。
+把对白用块引用嵌进场景 → 写素材提示词 → 跑 lint 校对 → 写总览与 manifest。
 
 ## 产出结构
 
@@ -122,8 +144,12 @@ Victorian Gothic mansion drawing room at dawn, wide view ... no people, no figur
 
 技能自带两个脚本，都不需要联网、不依赖第三方库（PDF 抽取需要 `pypdf`）：
 
+脚本就在仓库里，可以直接用，不必先安装：
+
 ```bash
-SKILL="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp/skills/coc-kp-prep"
+SKILL="presets/coc-kp/skills/coc-kp-prep"          # 仓库内
+# 或指向已安装的位置：
+# SKILL="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp/skills/coc-kp-prep"
 
 # 抽取模组 → 带页标记的纯文本（含抽取质量自检）
 python3 "$SKILL/scripts/extract_module.py" --src <模组文件> --out <模组名>/.meta/source.txt
@@ -140,28 +166,28 @@ lint 输出 `FATAL` / `WARN` 分级，并在末尾给一张篇幅与文体统计
 ## 仓库结构
 
 ```
-coc-kp-preset/                 预设源（装进预设定目录的就是这份）
-├── agent.cordis.yml           组合：persona + 技能发现 + 工具集
-├── preset.yml                 名册元数据
-├── skills/coc-kp-prep/
-│   ├── SKILL.md               主流程 SOP（10 步）
-│   ├── references/
-│   │   ├── style.md               文风标准
-│   │   ├── scene-authoring.md     场景笔记怎么组织
-│   │   ├── npc-authoring.md       NPC 笔记：人设先行、大段对白
-│   │   ├── artifact-authoring.md  素材提示词怎么写
-│   │   ├── obsidian-conventions.md 格式唯一权威（frontmatter / callout / 块引用）
-│   │   └── pipeline.md            抽取、大纲、fan-out、校对、失败处理
-│   └── scripts/
-│       ├── extract_module.py
-│       └── lint_notes.py
-└── fixtures/                  开发用微缩模组（md + docx 生成器）
-
-vault-test/                    一份手写的参考实现（用夹具模组跑出来的完整产出）
-docs/                          架构设计与开发记录
+package.json              插件包清单（dsh.profile.bundles + files）
+index.js                  入口：空实现，这个 bundle 只贡献 patch 层
+cordis.patch.yml          bundle 的 patch 层：include 下面那个 row 文件
+coc-kp-preset-root.row.yml  往 agent-presets 行注册包内 presets/ 作为 preset 根
+presets/coc-kp/           ← 预设本体
+├── agent.cordis.yml       组合：persona + 技能发现 + 工具集
+├── preset.yml             名册元数据
+└── skills/coc-kp-prep/
+    ├── SKILL.md           主流程 SOP（10 步）
+    ├── references/
+    │   ├── style.md                 文风标准
+    │   ├── scene-authoring.md       场景笔记怎么组织
+    │   ├── npc-authoring.md         NPC 笔记：人设先行、大段对白
+    │   ├── artifact-authoring.md    素材提示词怎么写
+    │   ├── obsidian-conventions.md  格式唯一权威（frontmatter / callout / 块引用）
+    │   └── pipeline.md              抽取、大纲、fan-out、校对、失败处理
+    └── scripts/
+        ├── extract_module.py
+        └── lint_notes.py
+dev-fixtures/             开发用微缩模组（md + docx 生成器），不随 npm 包发布
+docs/                     架构设计与开发记录
 ```
-
-`vault-test/` 可以当**形态基准**用：让 agent 跑完后逐条比对，或直接当作笔记写法的样板。
 
 ## 设计要点
 

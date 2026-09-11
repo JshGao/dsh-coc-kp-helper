@@ -160,3 +160,23 @@ SKILL.md 顶部加「这些笔记要被朗读」门禁；重写场景与 NPC 文
 
 发布前从仓库中排除了：守秘人本人的两份个人笔记（含具体模组内容）、
 守秘人的测试仓库、开发期的临时对照文件、`.meta/.venv`。
+
+---
+
+## 第八轮：改为 DSH 插件包分发
+
+**背景**：agent preset 除了手动复制，还可以做成 DSH 的插件包（profile bundle）。
+
+**做法**：包根放 `package.json`（`dsh.profile.bundles` 指向自己）、`index.js`（空实现）、
+`cordis.patch.yml`（bundle 的 patch 层，用相对路径 include 同目录的 row 文件）。
+row 文件往 `agent-presets` 行注册包内 `presets/` 作为 preset 根。
+
+**两个要点**：
+
+1. patch **整体替换**目标行的 config，所以要写全 `default` / `roots` /
+   `includeShippedRoot` / `includeUserRoot` 四个键，否则会丢掉 shipped 与 user 两个根。
+2. preset 行里的 `baseUrl` 是**预设定目录**、不是包目录，所以 `skills/` 必须留在预设定目录内
+   （即 `presets/coc-kp/skills/`）。这与 shipped preset 的布局一致。
+
+**同时保留手动复制路径**：bundle 的 patch 层只在启动时应用，且行解析基址在部署侧，
+所以 README 里两种安装方式都给了，手动复制那条完全不依赖 patch 层。

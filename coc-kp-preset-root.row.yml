@@ -1,0 +1,9 @@
+# 见同目录 cordis.patch.yml 的说明。
+- id: agent-presets
+  name: '@deepseek-ai/dsh-agent-presets'
+  config:
+    default: standard
+    roots:
+      - path: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('presets/', import.meta.url))"
+    includeShippedRoot: true
+    includeUserRoot: true

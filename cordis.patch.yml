@@ -1,0 +1,11 @@
+# 本 bundle 的唯一贡献：把包内 `presets/` 目录注册成 agent preset 的一个根，
+# 于是名册里出现「COC 守秘人备团模式」。
+#
+# 这个 row 文件与 patch 放在同一个目录（包根），用相对路径 include。如果本层 patch
+# 的 baseUrl 不是本文件所在目录，include 会解析失败并在启动时报错——不会静默失效，
+# 那种情况下改用 README 里的「方式二：手动复制」。
+#
+# 注意：patch 会**整体替换** `agent-presets` 行的 config，所以下面把四个键都写全
+# （与 dsh-web-app 里的那份等价），否则会丢掉 shipped / user 两个根。
+
+- include: ./coc-kp-preset-root.row.yml
