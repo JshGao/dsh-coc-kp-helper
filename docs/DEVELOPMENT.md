@@ -202,3 +202,37 @@ bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一�
 不需要重启：名册每次调用重读目录，技能正文每次加载重读文件。
 
 **未验证点**：bundle patch 里相对 include 的解析基址。README 的排错一节写了两条确定可行的补法。
+
+---
+
+## 第十轮：实测 bundle 层能不能自己挂 preset（结论：不能）
+
+用户指出两件事：「按 DSH 的设计理念，这类插件不需要重启」，以及
+「`include` 的解析基址真的是个问题么」。造了一个临时 `DSH_HOME` + 临时 profile 实测。
+
+**测到的硬事实**：
+
+| 试法 | 结果 |
+|---|---|
+| `cordis.patch.yml` 里写 `- include: ./x.row.yml` | `patch: id is required for non-insert patches` —— **根本不成立** |
+| patch 表达式里用 `import.meta.url` | `Cannot use 'import.meta' outside a module` —— 求值环境不是模块 |
+| patch 表达式里用 `process` / `process.env` | **可用**（含 `process.env.DSH_HOME` 的表达式求值通过，服务起得来） |
+| 空占位 patch 的 bundle | 启动干净（http 401 = 可信域围栏，非错误） |
+| 用户补丁层里注册 preset 根 | 启动干净，无 preset 报错 |
+
+**顺带确认的两件事**：
+
+- `dsh plugin add` 确实会**自动**把声明了 `dsh.bundle` 的依赖挂进 `dsh.profile.bundles`
+  （实测：装完 `bundles` 里自动出现本包）。
+- 「热挂载」那句提示来自用户装的 **`dshmarket`** 而不是 DSH 核心：它的
+  `parseSimplePatch()` 只接受纯 `- insert: / - id: / name:` 形状，
+  带 `config` 或表达式就退回「重启后生效」。而我们的 preset 根**必须**写 config，
+  所以走插件安装这条路，重启是不可避免的。
+
+**改法（不再让 bundle 自己挂 preset）**：
+
+1. `cordis.patch.yml` 改成**空占位**（只显式写全四个键、`roots: []`），保证包是合法 bundle
+   且不会因表达式错误让宿主启动失败；
+2. 新增 `install.sh`：打印 / 写入用户补丁层的片段（绝对路径），
+   **用户补丁层是 `patchReload: "live"` 热重载的，保存即生效、不需要重启**；
+3. README 把「何时需要重启」列成表，并写下三条实测结论。

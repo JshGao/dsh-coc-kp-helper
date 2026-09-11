@@ -7,7 +7,6 @@
   "files": [
     "index.js",
     "cordis.patch.yml",
-    "coc-kp-preset-root.row.yml",
     "presets"
   ],
   "keywords": [

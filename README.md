@@ -65,25 +65,60 @@ python3 -m venv "<模组名>/.meta/.venv"
 
 ## 安装
 
-这个仓库是一个 **DSH 插件包**（bundle）：`package.json` 里声明 `dsh.bundle.patch`，
-由 `cordis.patch.yml` 往 `agent-presets` 行注册包内 `presets/` 作为 preset 根，
-于是名册里出现「COC 守秘人备团模式」。
+这个仓库是一个 **DSH 插件包**（bundle），但它**不能独自把 preset 挂进名册**——
+preset 的根目录必须由 DSH 配置声明，而 bundle 的 patch 层里既不能用 `include`、
+也不能用 `import.meta`（两条都是实测结论，见 `cordis.patch.yml` 的注释）。
+所以按下面两步来，**全程不需要重启**。
 
-### 方式一：作为插件安装（推荐）
+### 第 1 步：让 DSH 能找到这个包（二选一）
 
 ```bash
+# A. 作为插件装进 profile（推荐，dsh 会自动把声明了 dsh.bundle 的依赖挂进 bundles）
 dsh plugin --profile web add "github:JshGao/dsh-coc-kp-helper"
+
+# B. 或者什么都不装：直接在仓库目录里用脚本（脚本只依赖 Python 标准库）
 ```
 
-`dsh plugin add` 会做两件事：用 pnpm 把包装进该 profile，然后**自动把声明了 `dsh.bundle`
-的依赖加入 `dsh.profile.bundles`**（这一步是 DSH 自己做的，不需要手动改 bundles）。
+### 第 2 步：注册 preset 根
 
-装完**重启一次 `dsh web`**：bundle 层在启动时读取并应用。之后：
+```bash
+./install.sh          # 打印补丁片段
+./install.sh --write  # 直接写进 $DSH_HOME/cordis.patch.yml（会先备份）
+```
 
-- **改笔记、改技能文档不需要重启**——名册每次调用都重读目录，技能正文每次加载都重读文件；
-- **改 preset 组合、装新插件才需要重启**（bundle 层是启动期的层）。
+它做的事就是往你的补丁层里加一段（`$DSH_HOME/cordis.patch.yml`）：
 
-### 方式二：手动复制到用户预设根（不依赖 bundle 层）
+```yaml
+- id: agent-presets
+  config:
+    default: standard
+    roots:
+      - path: /绝对路径/到此仓库/presets
+    includeShippedRoot: true
+    includeUserRoot: true
+```
+
+**用户补丁层是 DSH 热重载的**：`patchReload: "live"` 会监听
+`$DSH_HOME/cordis.patch.yml` 与 `$DSH_HOME/profiles/<profile>/cordis.patch.yml`，
+改动后重算 patch 列表并就地更新 entry，所以**保存即生效，不需要重启**。
+
+### 关于重启，把边界说清楚
+
+| 动作 | 是否需要重启 | 原因 |
+|---|---|---|
+| 写第 2 步那段 patch（用户补丁层） | **不需要** | `patchReload: "live"` 热重载这两个文件 |
+| 改 preset 组合、技能文档、笔记 | **不需要** | 名册每次调用重读目录；技能正文每次加载重读文件 |
+| `dsh plugin add` 装新 bundle | **需要** | bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一次快照）；`dshmarket` 对此的提示是「bundle patch 含配置/表达式，热挂载仅支持纯 insert，重启后生效」 |
+
+### 装完确认
+
+预设下拉里应出现「COC 守秘人备团模式」。没有的话依次检查：
+`install.sh` 输出的路径是否真实存在；那段 patch 是否与已有的 `agent-presets` 行**重复声明**
+（同一 id 只应出现一次，后写的会整体替换 config）。
+
+### 另一种不依赖补丁层的做法
+
+把 preset 直接复制到用户预设根（同样只需重启一次宿主）：
 
 ```bash
 DST="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp"
@@ -91,42 +126,7 @@ mkdir -p "$DST"
 cp -R presets/coc-kp/agent.cordis.yml presets/coc-kp/preset.yml presets/coc-kp/skills "$DST"/
 ```
 
-重启一次 `dsh web` 让名册重新扫描。两种方式效果相同；同时装的话**插件根优先**
-（同名 preset 以靠前的根为准，shipped 根最前、user 根最后）。
-
-### 排错
-
-| 现象 | 原因与处理 |
-|---|---|
-| 预设下拉里没有它 | 确认 profile 的 `package.json` 里 `dsh.profile.bundles` 含本包（`dsh plugin add` 应已自动加）；确认 `dsh web` 真的重启过 |
-| 启动时报 patch 相关解析错误 | bundle patch 里的 `include: ./coc-kp-preset-root.row.yml` 没解析到包目录。这是**已知未验证点**（见下）。改用方式二，或按下面任一补法修 |
-| 启动报 `preset "coc-kp" ... missing` | patch 生效但 `presets/` 路径没指对；先删掉那个空目录再重装 |
-| 会话里写不进仓库 | 会话工作目录不是仓库；见「运行时依赖」一栏 |
-
-### 已知未验证点：bundle patch 的 include 基址
-
-`cordis.patch.yml` 用相对路径 include 同目录的 `coc-kp-preset-root.row.yml`。
-DSH 里 patch 内的 `!!js` 表达式在 **profile 目录**的 `baseUrl` 上求值，而 include 路径的解析基址
-官方文档没有写明。两条确定可行的补法：
-
-**补法 A（改 patch）**：删掉本包的 bundle 声明，改为在你的 profile 补丁层
-（`~/.dsh/profiles/web/cordis.patch.yml`，这个文件是**热重载**的）里手写：
-
-```yaml
-- id: agent-presets
-  config:
-    default: standard
-    roots:
-      - path: /绝对路径/到/node_modules/@jshgao/dsh-coc-kp-helper/presets
-    includeShippedRoot: true
-    includeUserRoot: true
-```
-
-**补法 B（改包）**：把 preset 根的绝对路径改成由 `index.js` 计算并通过 `ctx.shellEnv` 发布，
-row 文件里引用那个变量而非 `baseUrl`。需要改一版包，提 issue 即可。
-
-
----
+两种方式效果相同；同时用的话**配置里的根优先**（同名 preset 以靠前的根为准）。
 
 ## 使用
 

@@ -1,11 +1,33 @@
-# 本 bundle 的唯一贡献：把包内 `presets/` 目录注册成 agent preset 的一个根，
-# 于是名册里出现「COC 守秘人备团模式」。
+# 本 bundle 的 patch 层。
 #
-# 这个 row 文件与 patch 放在同一个目录（包根），用相对路径 include。如果本层 patch
-# 的 baseUrl 不是本文件所在目录，include 会解析失败并在启动时报错——不会静默失效，
-# 那种情况下改用 README 里的「方式二：手动复制」。
+# ⚠ 默认是**空占位**：它只把 agent-presets 行的 config 显式写全（等价于默认值），
+#   不注册任何 preset 根。原因见下。
 #
-# 注意：patch 会**整体替换** `agent-presets` 行的 config，所以下面把四个键都写全
-# （与 dsh-web-app 里的那份等价），否则会丢掉 shipped / user 两个根。
+# 为什么不能在这里自动注册 preset 根（三条实测结论）：
+#
+# 1. patch 文件里不能用 `- include: ./x.yml`。patch 的每一项要么是 insert，
+#    要么必须带 id；不带 id 的非 insert 项被直接拒绝：
+#      patch: id is required for non-insert patches
+#    bundle patch 是「数据层 patch」而非嵌套 Include 树，相对路径也没有
+#    "相对本文件"的语义。
+# 2. patch 表达式里**不能用 `import.meta`**：
+#      Cannot use 'import.meta' outside a module
+#    所以无法用包自身的模块 URL 定位 presets/ 目录。实测 `process` / `process.env`
+#    在表达式里可用。
+# 3. 于是唯一能用表达式算出来的是「profile 目录 + node_modules + 包名」这种路径，
+#    而 pnpm 的布局不保证该路径稳定（小 profile 是实体目录，大 profile 会变成
+#    指向 .pnpm 的软链），代价是：指错时宿主会在该路径**创建一个占位目录**并报
+#    「composition file is missing」。这比让用户显式写一行绝对路径更糟。
+#
+# 因此：preset 根由用户在**自己的**补丁层里显式声明（这条路径是 DSH 热重载的，
+# 不需要重启）。用 `./install.sh` 生成那一行，或见 README 的「安装」。
+#
+# 这个占位 patch 的作用是：让本包在 `dsh plugin add` 后是一个**合法的 bundle**，
+# 且不会因为表达式错误而让宿主启动失败。
 
-- include: ./coc-kp-preset-root.row.yml
+- id: agent-presets
+  config:
+    default: standard
+    roots: []
+    includeShippedRoot: true
+    includeUserRoot: true
