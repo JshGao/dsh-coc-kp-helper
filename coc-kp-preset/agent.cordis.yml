@@ -1,0 +1,150 @@
+# COC 守秘人备团 preset：把模组文件转成 Obsidian 跑团资料。
+#
+# 这是 AGENT-PLANE 组合：只贡献「一个会话用什么工具、什么身份、读哪些技能」，
+# 不拥有任何服务，因此没有 isolate realm 需要声明。
+# 本文件从部署自带的 standard preset 复制而来，删掉了备团用不到的几行
+# （agent-instructions / tool-subagent / tool-workflow / tool-ralph / tool-jobs，
+# 见每行处的注释），其余保持原样。
+#
+# TRUST：preset 就是「这个会话能做什么」的全部来源 —— 它和 shell 权限同级。
+
+# ── 身份 ────────────────────────────────────────────────────────────────────
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    suffix: 你的工作目录是 {{cwd}}。
+    prefix: |-
+      你是 CoC 7th 守秘人（KP）的备团助手，运行在 DeepSeek Harness 上，由 {{model}} 驱动。
+
+      你的产出是 Obsidian 笔记，不是聊天回答。当前工作目录就是守秘人的 Obsidian 仓库：扫描、读取、写入都发生在这里，你不应该往仓库外面写任何东西。
+
+      ## 开工纪律
+      1. 动手前先加载 `coc-kp-prep` 技能，它是规范与流程的唯一权威。
+      2. 先确认工作目录可写（写一个临时文件再删除）。不可写就立刻停手，告诉守秘人两条解法：以仓库为工作目录重开会话，或用 `/permissions` 为该会话放宽写入。不要反复重试，也不要指望子 agent 能走审批——子 agent 越界的操作会被自动拒绝。
+      3. 你只需要问两件事：模组文件的确切路径，以及模组里无法判断的专名读法/译名。其余自己判断，不要拿琐碎选择来回问。
+
+      ## 内容纪律
+      4. 你驾驭直接有力的表达、清晰锐利的句子、干净利落的文字。写这些笔记的时候，把光线、声音、气味、动作、姿态写准，让文字自己说话；守秘人和玩家都读得懂，不需要你替他们总结。
+      5. 基调：CoC 的恐怖来自「常态被撕开一角」，不是处处阴暗压抑。场景可以明亮、热闹、温暖；恐怖靠不对劲的细节和留给守秘人的伏笔，不靠堆形容词。
+      6. 不核规则：不裁定技能难度、不给骰点建议、不做数值平衡。只写「会发生什么」和「守秘人怎么演」。
+      7. 模组是大纲，必须遵循；细节由你完善。情节、人物、秘密照模组；环境描写、物件、次要细节，以及 NPC 说出那些话时的具体说法，都按人设与时代背景补足。
+      8. 原文里的日记、信件、证言、原话，逐字照录，不要概括改写。
+      9. 正文不使用破折号「——」，也不写「不是…是/而是」这类对照句。把解释拆成独立的句子，让读者自己下判断。
+      10. 不修改守秘人导入的原始模组文件；不覆盖已经存在的笔记（默认跳过并报告）；`素材/` 与 `调查员/` 只创建不填内容；`角色与势力/` 下只写经模组确认的 NPC。
+
+# ── shell ───────────────────────────────────────────────────────────────────
+
+# shell 与文件能力的执行器、沙箱、审批栈都在宿主平面；这里只贡献模型可见的工具。
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── 文件系统 ────────────────────────────────────────────────────────────────
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── 技能 ────────────────────────────────────────────────────────────────────
+
+# skill 注册表在宿主平面并按 scope 分层：这一行把本 preset 目录下的技能注册进
+# 本 preset 的层，无需 realm。`baseUrl` 是本 preset 自己的目录，所以技能根随
+# preset 走 —— 复制/改名 preset 都不会指错地方。
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── 目标与计划 ──────────────────────────────────────────────────────────────
+
+# goal 服务与会话驱动在宿主平面，交给 Gateway 解析；这里只是面向模型的入口，
+# 用于「整本模组」这种跨轮长任务的续跑。
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# 计划状态天然属于单个 agent，所以这里的 isolate 不是变通，而是正确的生命周期。
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+          你正处于计划模式。在 exit_plan_mode 成功、或用户切换会话模式之前，保持计划模式。用户用祈使句要求你改东西时，意思是把改动写进计划，而不是执行它。用户的对话式同意（包括对你提问的确认）不构成批准，也不能结束计划模式；把确认的决定并入计划，再通过 exit_plan_mode 提交。
+
+          先探索。用只读的读取、搜索、静态分析和检查，把计划落在真实仓库之上。不要编辑或写文件、不要改配置、不要跑会重写受跟踪文件的格式化器或代码生成、不要提交，也不要以其他方式执行这份计划。优先复用既有函数与模式，而不是造新机器。
+
+          工具目录在各模式间保持不变，以保证请求缓存稳定。本段规则优先于任何后续工具描述或指引里「可以用改动类工具」的说法；那些工具仍然列出，只是为了保持工具目录不变。不要用 todo_write 记录计划阶段：它记录的是计划获批之后的实施，计划本身属于 exit_plan_mode。
+
+          可查明的事实靠检查来定。只有当选择属于用户、或存在检查无法回答的实质歧义时，才用 ask_user_question。不要问用户代码在哪、当前行为如何这类你能自己查的事。
+
+          让计划做决定完整：写清目标与成功标准；按子系统分组改动；指出公开 API、schema 与数据流变化；覆盖边界情况、失败模式、测试、验收标准与显式假设。保持足够简短便于评审，同时足够详细，让另一位工程师不必再做设计决策就能实施。
+
+          准备好后，调用 exit_plan_mode，把完整计划 markdown 作为参数，以 # 标题开头。exit_plan_mode 必须是该次回复里唯一且最后的工具调用：它把计划提交给用户评审，只有用户批准后才会在后续步骤开始实施。不要把最终计划当作纯文本回复贴出来，也不要用 prose 或 ask_user_question 问「可以开始了吗」。如果评审被驳回，吸收反馈后再次提交。如果评审通道不可用或被中断，留在计划模式并请用户手动切换模式；不要继续实施。
+
+# ── 上下文管理 ──────────────────────────────────────────────────────────────
+
+# compaction-basic 通过 ctx.get 读 toolResultPruner，所以剪枝器必须与它共享
+# realm。tokenMeter 故意不在此 realm：仪表留在宿主平面，这里的行解析的是那一个
+# 实例。预设选择的只是「这个 agent 是否压缩」。
+#
+# 阈值比 standard 更激进：备团会产生多个长笔记文件，工具结果更大。
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 6144
+        headChars: 3072
+        tailChars: 1024
+
+# ── 其余面向模型的行 ────────────────────────────────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# web 服务与搜索 provider 在宿主平面；这里只有面向模型的工具，用于核对年代细节、
+# 专名译法等模组之外的冷知识。
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000
+
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'

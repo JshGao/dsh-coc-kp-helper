@@ -1,0 +1,19 @@
+# Obsidian 本地状态
+.obsidian/
+
+# Python 环境与缓存（模组目录里的私有环境）
+.meta/.venv/
+**/.meta/.venv/
+__pycache__/
+*.pyc
+
+# 开发期临时产物
+dsh-coc-kp-helper测试/
+*.log
+
+# 守秘人本人的个人笔记（含具体模组内容，不入库）
+/德莱尼子爵府.md
+/埃尔文·琼斯.md
+
+# macOS
+.DS_Store
