@@ -65,60 +65,36 @@ python3 -m venv "<模组名>/.meta/.venv"
 
 ## 安装
 
-这个仓库是一个 **DSH 插件包**（bundle），但它**不能独自把 preset 挂进名册**——
-preset 的根目录必须由 DSH 配置声明，而 bundle 的 patch 层里既不能用 `include`、
-也不能用 `import.meta`（两条都是实测结论，见 `cordis.patch.yml` 的注释）。
-所以按下面两步来，**全程不需要重启**。
-
-### 第 1 步：让 DSH 能找到这个包（二选一）
+本仓库是一个 **DSH 插件包**：入口 `index.js` 在加载时把包内 `presets/coc-kp/` 同步到
+**用户预设根** `$DSH_HOME/.agent-presets/coc-kp/`。那是 DSH 名册本来就扫描的标准位置，
+所以名册里会出现「COC 守秘人备团模式」。
 
 ```bash
-# A. 作为插件装进 profile（推荐，dsh 会自动把声明了 dsh.bundle 的依赖挂进 bundles）
 dsh plugin --profile web add "github:JshGao/dsh-coc-kp-helper"
-
-# B. 或者什么都不装：直接在仓库目录里用脚本（脚本只依赖 Python 标准库）
 ```
 
-### 第 2 步：注册 preset 根
+装完**重启一次 `dsh web`**：插件在启动时加载并完成同步。之后：
 
-```bash
-./install.sh          # 打印补丁片段
-./install.sh --write  # 直接写进 $DSH_HOME/cordis.patch.yml（会先备份）
-```
+- 改技能文档、改笔记**不需要重启**（名册每次调用重读目录，技能正文每次加载重读文件）；
+- 改 preset 组合（`agent.cordis.yml`）或升级包，需要重启。
 
-它做的事就是往你的补丁层里加一段（`$DSH_HOME/cordis.patch.yml`）：
+### 为什么不在 bundle patch 里直接注册 preset 根
 
-```yaml
-- id: agent-presets
-  config:
-    default: standard
-    roots:
-      - path: /绝对路径/到此仓库/presets
-    includeShippedRoot: true
-    includeUserRoot: true
-```
+三条实测结论（都踩过）：
 
-**用户补丁层是 DSH 热重载的**：`patchReload: "live"` 会监听
-`$DSH_HOME/cordis.patch.yml` 与 `$DSH_HOME/profiles/<profile>/cordis.patch.yml`，
-改动后重算 patch 列表并就地更新 entry，所以**保存即生效，不需要重启**。
+1. **patch 里不能用 `- include: ./x.yml`**：patch 的每一项要么是 insert、要么必须带 id，
+   不带 id 的非 insert 项被直接拒绝 —— `patch: id is required for non-insert patches`。
+2. **patch 表达式里不能用 `import.meta`** —— `Cannot use 'import.meta' outside a module`。
+3. **patch 表达式里的 `baseUrl` 是 profile 目录，不是包目录**。用 side-effect 探针实测得到
+   `baseUrl = file:///…/profiles/web/`，而包名解析走的是安装位置，所以
+   **没有任何表达式能定位到包自己的目录**。
 
-### 关于重启，把边界说清楚
+于是改成「插件加载时把 preset 复制到标准用户预设根」：不依赖表达式、不依赖 patch 层，
+复制到用户根之后 preset 还能被正常本地改写。
 
-| 动作 | 是否需要重启 | 原因 |
-|---|---|---|
-| 写第 2 步那段 patch（用户补丁层） | **不需要** | `patchReload: "live"` 热重载这两个文件 |
-| 改 preset 组合、技能文档、笔记 | **不需要** | 名册每次调用重读目录；技能正文每次加载重读文件 |
-| `dsh plugin add` 装新 bundle | **需要** | bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一次快照）；`dshmarket` 对此的提示是「bundle patch 含配置/表达式，热挂载仅支持纯 insert，重启后生效」 |
+### 另一种安装方式（不装插件）
 
-### 装完确认
-
-预设下拉里应出现「COC 守秘人备团模式」。没有的话依次检查：
-`install.sh` 输出的路径是否真实存在；那段 patch 是否与已有的 `agent-presets` 行**重复声明**
-（同一 id 只应出现一次，后写的会整体替换 config）。
-
-### 另一种不依赖补丁层的做法
-
-把 preset 直接复制到用户预设根（同样只需重启一次宿主）：
+把 preset 直接复制到用户预设根，效果完全相同：
 
 ```bash
 DST="${DSH_HOME:-$HOME/.dsh}/.agent-presets/coc-kp"
@@ -126,7 +102,22 @@ mkdir -p "$DST"
 cp -R presets/coc-kp/agent.cordis.yml presets/coc-kp/preset.yml presets/coc-kp/skills "$DST"/
 ```
 
-两种方式效果相同；同时用的话**配置里的根优先**（同名 preset 以靠前的根为准）。
+### 同步行为
+
+- **幂等**：目标目录里的 `.synced-version` 与包版本一致时跳过，不会每次启动都覆盖；
+- 升级包后重启一次会自动覆盖刷新；
+- 复制到用户根之后可以直接改 `$DSH_HOME/.agent-presets/coc-kp/` 里的内容（名册跟着变），
+  但下次升级包时会被覆盖；长期改动建议直接改包内 `presets/coc-kp/`；
+- 同步失败**不会阻断宿主启动**，只在日志里打一行 `[coc-kp-helper] preset 同步失败：…`。
+
+### 装完确认
+
+预设下拉里应出现「COC 守秘人备团模式」。没有的话：
+
+| 现象 | 处理 |
+|---|---|
+| 下拉里没有 | 确认 `dsh web` 真的重启过（插件只在启动时加载）；确认 `$DSH_HOME/.agent-presets/coc-kp/agent.cordis.yml` 存在 |
+| 有但标为损坏 | 看日志里 `[coc-kp-helper]` 那行；常见原因是宿主进程的 `$DSH_HOME` 与预期不一致 |
 
 ## 使用
 
@@ -242,10 +233,8 @@ lint 输出 `FATAL` / `WARN` 分级，并在末尾给一张篇幅与文体统计
 ## 仓库结构
 
 ```
-package.json              插件包清单（dsh.bundle.patch + files）
-index.js                  入口：空实现，这个 bundle 只贡献 patch 层
-cordis.patch.yml          bundle 的 patch 层：include 下面那个 row 文件
-coc-kp-preset-root.row.yml  往 agent-presets 行注册包内 presets/ 作为 preset 根
+package.json              插件包清单（main: index.js）
+index.js                  插件入口：加载时把包内 preset 同步到 $DSH_HOME/.agent-presets/coc-kp/
 presets/coc-kp/           ← 预设本体
 ├── agent.cordis.yml       组合：persona + 技能发现 + 工具集
 ├── preset.yml             名册元数据
@@ -273,8 +262,11 @@ docs/                     架构设计与开发记录
   子 agent 无法申请审批，所以所有落盘都在父已获批的范围内。
 - **模组是大纲，细节由 agent 完善**：情节、人物、秘密照模组；环境描写、物件、次要细节
   按人设与时代背景补足。
-- **preset 行里的 `baseUrl` 是预设定目录**，不是包目录，所以 `skills/` 必须留在预设定内部
-  （`presets/coc-kp/skills/`）。这与 DSH 自带 preset 的布局一致。
+- **preset 行里的 `baseUrl` 是预设定目录**（preset 挂载时会把 ctx.baseUrl 重写到预设定目录），
+  所以 `skills/` 必须留在预设定内部（`presets/coc-kp/skills/`）。这与 DSH 自带 preset 的布局一致。
+  注意这与 **bundle patch 表达式**里的 `baseUrl` 不是一回事：后者的实测值是 profile 目录。
+- **插件同步而不是 patch 注册**：DSH 里没有任何机制能让一个包在 patch 层里定位到自己的目录
+  （见「安装」一节的实测三条），所以本包用最直接的插件行为完成注册——把 preset 放到标准位置。
 - **patch 会整体替换目标行的 config**，所以 `coc-kp-preset-root.row.yml` 把 `default` /
   `roots` / `includeShippedRoot` / `includeUserRoot` 四个键写全，否则会丢掉 shipped 与 user 两个根。
 

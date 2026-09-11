@@ -6,7 +6,6 @@
   "main": "index.js",
   "files": [
     "index.js",
-    "cordis.patch.yml",
     "presets"
   ],
   "keywords": [
@@ -22,10 +21,5 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JshGao/dsh-coc-kp-helper.git"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
   }
 }

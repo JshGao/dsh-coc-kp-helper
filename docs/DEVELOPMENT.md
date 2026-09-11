@@ -236,3 +236,26 @@ bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一�
 2. 新增 `install.sh`：打印 / 写入用户补丁层的片段（绝对路径），
    **用户补丁层是 `patchReload: "live"` 热重载的，保存即生效、不需要重启**；
 3. README 把「何时需要重启」列成表，并写下三条实测结论。
+
+---
+
+## 第十一轮：回到标准插件形态
+
+用户否掉了「往用户补丁层写一行绝对路径」的做法，要求按正常插件完成，可以重启。
+
+**关键实测（第十轮继续深挖）**：用 side-effect 探针把 `baseUrl` 的真值打出来——
+`baseUrl = file:///tmp/dsh-verify2/profiles/web/`。也就是说 **bundle patch 表达式里的 `baseUrl`
+是 profile 目录，不是包目录**；而包名解析走安装位置。结论：**patch 层里没有任何表达式能定位到
+包自己的目录**，所以「bundle 自己注册 preset 根」这条路在 DSH 里走不通。
+
+**最终方案**：`index.js` 写成真正的插件——加载时把包内 `presets/coc-kp/` 复制到
+`$DSH_HOME/.agent-presets/coc-kp/`（DSH 名册本来就扫描的标准用户预设根）：
+
+- 不再需要 `cordis.patch.yml`，`package.json` 也不再声明 `dsh.bundle`（纯 JS 插件，
+  按普通依赖安装即可）；
+- 同步幂等（用 `.synced-version` 与包版本比对），升级后重启一次自动刷新；
+- 同步失败只打日志，不阻断宿主启动；
+- 用户装完**重启一次**即可，之后改技能/笔记都是热读。
+
+**顺带验证**：同步到用户根之后，用 `scanRoot()` 直接扫描确认 `coc-kp [user] ok`，
+composition 151 行、含 `skill-filesystem` 行。
