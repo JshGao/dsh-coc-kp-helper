@@ -259,3 +259,59 @@ bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一�
 
 **顺带验证**：同步到用户根之后，用 `scanRoot()` 直接扫描确认 `coc-kp [user] ok`，
 composition 151 行、含 `skill-filesystem` 行。
+
+---
+
+## 第十二轮：修回 bundle 声明（插件从未被加载）
+
+**现象**：按 README 装完、重启，预设下拉里没有「COC 守秘人备团模式」，
+`$DSH_HOME/.agent-presets/` 下没有 `coc-kp/`，日志里也没有任何 `[coc-kp-helper]` 行。
+没有报错，什么都没有。
+
+**根因**（第十一轮删过头了）：DSH 的插件树**只**由 `dsh.profile.bundles` 里每个包的
+`dsh.bundle.patch` 层叠而成 —— `dsh-app-boot` 的 `loadProfileDirectory()` 遍历 bundles，
+对每个包读 `package.json` 的 `dsh.bundle.patch`，取不到就抛
+`profile bundle "…" declares no dsh.bundle in its package.json`；
+随后 `composeEntries()` 把这些补丁层叠成最终的 entry list。
+
+一个**不在** `bundles` 里的依赖包，DSH 根本不会 import 它。它只是躺在 profile 的
+`node_modules` 里。于是 `index.js` 的 `apply()` 永不执行，preset 永不被同步 ——
+静默失效，没有任何日志。第十一轮的结论「纯 JS 插件，按普通依赖安装即可」不成立。
+
+**对照实测**（全部在临时 `DSH_HOME` + 临时 profile 里做，未触碰用户的真实 profile）：
+
+| 试法 | 结果 |
+|---|---|
+| 依赖 `link:` 旧版包（无 `dsh.bundle`）+ 手动写进 `bundles` | 启动直接抛错：`declares no dsh.bundle in its package.json` |
+| 依赖旧版包 + **不写进 `bundles`**（＝守秘人的真实状态） | 启动干净、`--dump-config` 里没有 `coc-kp-helper` 行、`$DSH_HOME/.agent-presets/` 不存在 —— 完全静默 |
+| `dsh plugin --profile probe add link:<旧版包>` | 装完打印 `dsh: warning: @jshgao/dsh-coc-kp-helper declares no dsh.bundle — installed as a plain dependency, not a profile layer`，`bundles` 不变 |
+| 同一条 `add` 换成**修复版包**（声明了 `dsh.bundle`） | `bundles` 里自动多出 `@jshgao/dsh-coc-kp-helper`（`reconcilePlugins()` 按**已安装状态**而非依赖 diff 判定） |
+| 修复版包 + 冷启动 | `$DSH_HOME/.agent-presets/coc-kp/` 出现，`.synced-version = 0.1.0` |
+| 启动后用探针调 `agentPresets.list()` / `standingKeyFor('coc-kp')` | 名册列出 `coc-kp [user] COC 守秘人备团模式`、`broken: null`；**挂载 OK**，standing key `{agentPreset:"coc-kp"}` |
+| 旧版包（不重启）往 profile 的 `cordis.patch.yml` 热插一行 | 20 秒内 preset 出现 —— `patchReload: "live"` 确实会把新 row 拉起来 |
+
+**改法**（两处，缺一不可）：
+
+1. `package.json` 加回 `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`，
+   `files` 加回 `cordis.patch.yml`；
+2. 新建 `cordis.patch.yml`，照抄 `@deepseek-ai/dsh-base` 的形状 —— 一个 `insert`，
+   插一行 `{ id: coc-kp-helper, name: '@jshgao/dsh-coc-kp-helper' }`。
+   行按 `name` 解析、解析基址是 profile 目录，而包就在 profile 的 `node_modules` 里。
+
+`index.js` 的同步逻辑本身没问题，一字未改。
+
+**已经装过旧版的机器怎么恢复**：包的 GitHub 版本更新后跑一次
+`dsh plugin --profile web install`（或 `update`），`reconcilePlugins()` 会把它补进
+`dsh.profile.bundles`，然后重启一次。不想重启就往 profile 的 `cordis.patch.yml` 热插那一行。
+
+**热插那一行有个陷阱（同轮实测）**：**两个层不能同时提供同一个 id**。
+bundle 层和用户补丁层各插一行 `coc-kp-helper` 时，加载器直接抛
+`duplicate loader entry id: coc-kp-helper`，宿主打印
+`dsh: plugin tree failed to load: failed to apply loader entry include (cordis:include): …`
+并且**整个 profile 起不来**（不是警告、不是去重）。所以「不重启的补法」只在
+`dsh.profile.bundles` 里还没有本包时用；一旦 `dsh plugin … install` 把它补进 bundles，
+必须把那行删掉。README 里两条路都写了，并给了冲突时的报错原文。
+
+**教训**：删一个 `package.json` 字段之前，先确认它是不是**加载开关**而不只是元数据。
+第十一轮把「bundle patch 层定位不到包目录」正确证伪了，却顺手把整个 bundle 声明一起删了 ——
+把「这条路走不通」误当成「这个机制不需要」。

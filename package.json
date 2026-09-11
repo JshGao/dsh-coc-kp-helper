@@ -1,11 +1,12 @@
 {
   "name": "@jshgao/dsh-coc-kp-helper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CoC 守秘人备团 preset for DeepSeek Harness：把 CoC 7th 模组转成 Obsidian 场景笔记、NPC 对白与素材绘图提示词。",
   "type": "module",
   "main": "index.js",
   "files": [
     "index.js",
+    "cordis.patch.yml",
     "presets"
   ],
   "keywords": [
@@ -21,5 +22,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JshGao/dsh-coc-kp-helper.git"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   }
 }

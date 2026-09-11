@@ -14,6 +14,11 @@
  * 复制是幂等的（版本号相同且目录存在就跳过），并且复制到用户根之后 preset 可以被
  * 正常地本地改写（名册每次调用都会重读那个目录）。
  *
+ * ⚠️ 前提：本文件**只有在本包声明了 `dsh.bundle.patch` 时才会被执行**。DSH 的插件树
+ * 只由 `dsh.profile.bundles` 里每个包的 bundle 补丁层层叠而成；不声明 `dsh.bundle`
+ * 的依赖包只是躺在 `node_modules` 里，DSH 永远不会 import 它，这里的 `apply()` 也就
+ * 永远不跑 —— 而且**完全静默**。声明在 `package.json`，补丁层在 `cordis.patch.yml`。
+ *
  * @module @jshgao/dsh-coc-kp-helper
  */
 

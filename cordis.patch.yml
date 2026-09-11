@@ -1,0 +1,21 @@
+# coc-kp-helper bundle patch：把这个包自己的插件挂进 profile 的插件树。
+#
+# 为什么这个文件必须存在（第十一轮踩过的坑，第十二轮修回来）：
+#
+#   DSH 的插件树**只**由 `dsh.profile.bundles` 里每个包的 `dsh.bundle.patch`
+#   层叠而成（`loadProfileDirectory()` → `composeEntries()`），再叠加 profile 与
+#   $DSH_HOME 的用户补丁层。一个依赖包如果**不声明** `dsh.bundle`，它只是被 pnpm
+#   装进了 `node_modules`，DSH 永远不会 import 它 —— `dsh plugin add` 只会打印
+#   `warning: … declares no dsh.bundle — installed as a plain dependency, not a
+#   profile layer`（见 `dsh/lib/plugin-*.js` 的 `reconcilePlugins()`）。
+#
+#   所以「纯 JS 插件，按普通依赖安装即可」是不成立的：没有这一层，index.js 的
+#   `apply()` 根本不会执行，preset 也就永远不会被同步到用户预设根。
+#
+# 形状照抄 @deepseek-ai/dsh-base：bundle 的 patch 是**一个 insert**，插到空
+# profile 根的末尾。行按 `name` 解析，解析基址是 profile 目录，所以包名必须与
+# package.json 的 `name` 一致，且包得是 profile 的依赖（`dsh plugin add` 保证了这点）。
+
+- insert:
+    - id: coc-kp-helper
+      name: '@jshgao/dsh-coc-kp-helper'
