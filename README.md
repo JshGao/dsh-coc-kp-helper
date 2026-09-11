@@ -74,14 +74,19 @@ python3 -m venv "<模组名>/.meta/.venv"
 
 ```bash
 dsh plugin --profile web add "github:JshGao/dsh-coc-kp-helper"
-dsh plugin --profile web install   # 可选：让 DSH 把本包挂进 dsh.profile.bundles
 ```
 
-装完**重启一次 `dsh web`**：插件在启动时加载并完成同步。之后：
+就这一条命令（本包没有构建步骤，不会触发 pnpm 对 git 依赖的 `allowBuilds` 拦截），
+然后**重启一次 `dsh web`**：插件在启动时加载并完成同步。之后：
 
 - 改技能文档、改笔记**不需要重启**（名册每次调用重读目录，技能正文每次加载重读文件）；
 - 改 preset 组合（`agent.cordis.yml`）或升级包，需要重启；
 - 改 profile 的 `cordis.patch.yml`（用户补丁层）**不需要重启**：`patchReload: "live"` 会热重载。
+
+> **版本**：`0.1.1` 是第一个真正会被加载的版本。`0.1.0` 少了 `dsh.bundle` 声明，
+> 装上去不会有任何效果（原因见下）。已经装过 `0.1.0` 的机器，跑一次
+> `dsh plugin --profile web update` 再重启即可 —— 任何一次成功的 `dsh plugin` 命令
+> 都会重新对账 `dsh.profile.bundles`，把新声明接上。
 
 ### 关键前提：包必须声明 `dsh.bundle`
 
