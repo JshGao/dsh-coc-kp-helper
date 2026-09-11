@@ -11,6 +11,9 @@ __pycache__/
 dsh-coc-kp-helper测试/
 *.log
 
+# 发布产物（npm pack 出来的 tarball，手动挂到 GitHub Release，不入库）
+*.tgz
+
 # 守秘人本人的个人笔记（含具体模组内容，不入库）
 /德莱尼子爵府.md
 /埃尔文·琼斯.md
