@@ -180,3 +180,25 @@ row 文件往 `agent-presets` 行注册包内 `presets/` 作为 preset 根。
 
 **同时保留手动复制路径**：bundle 的 patch 层只在启动时应用，且行解析基址在部署侧，
 所以 README 里两种安装方式都给了，手动复制那条完全不依赖 patch 层。
+
+---
+
+## 第九轮：修正 bundle 声明方式
+
+**发现**：上一轮把 `dsh.profile.bundles` 写进了本包自己的 `package.json`，这是错的——
+那是 **profile 清单**的字段。第三方 bundle 的声明方式是 `dsh.bundle.patch`。
+在守秘人机器上对比了三个已装的第三方包（`dshmarket` / `dsh-mlx-local` / `dsh-tavern`），
+它们都是 `dsh.bundle.patch: ./cordis.patch.yml`，且都出现在 profile 的 bundles 列表里。
+
+**`dsh plugin add` 会自动挂载**：读 `dsh/lib/plugin-*.js` 的 `reconcilePlugins()` 可知，
+安装后它会扫描 profile 的依赖，把声明了 `dsh.bundle` 的包自动加入 `dsh.profile.bundles`，
+并对没有声明的包给出警告。所以用户不需要手改 bundles。
+
+**关于「是否需要重启」**：`patchReload: "live"` 只热重载两个用户补丁层文件
+（profile 的 `cordis.patch.yml` 与 `$DSH_HOME/cordis.patch.yml`），实现是
+`watchUserPatches()` → `hmr.registerConfig()` → 重算 patch 列表并 `entry.update()`。
+bundle 层是启动期组成的（`composeLive()` 里 `bundlePatches` 只取一次），
+所以**新增一个 bundle（=装新插件）需要重启**；而 preset 内容（`agent.cordis.yml`、技能文档）
+不需要重启：名册每次调用重读目录，技能正文每次加载重读文件。
+
+**未验证点**：bundle patch 里相对 include 的解析基址。README 的排错一节写了两条确定可行的补法。

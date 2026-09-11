@@ -25,10 +25,8 @@
     "url": "git+https://github.com/JshGao/dsh-coc-kp-helper.git"
   },
   "dsh": {
-    "profile": {
-      "bundles": [
-        "@jshgao/dsh-coc-kp-helper"
-      ]
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   }
 }
